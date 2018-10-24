@@ -256,8 +256,7 @@ bool Sanity(IMG img, RTN rtn)
 		return false;
     }
 	else
-		TraceFile << RTN_Name(rtn) <<
-            "in " << IMG_Name(img) <<"can be inserted"<< endl;
+		//TraceFile << RTN_Name(rtn) <<" in " << IMG_Name(img) <<" can be inserted"<< endl;
 	return true;
 }
 VOID RecordRtnCount(RTN_COUNT * rc){//UINT32 * count
@@ -316,8 +315,8 @@ void ImageLoad(IMG img, VOID *v)
 			return ;
 		}*/
 
-		//!strcmp(IMG_Name(img).c_str(),"C:\\WINDOWS\\SYSTEM32\\ntdll.dll") ||
-		if( !strcmp(IMG_Name(img).c_str(),"C:\\WINDOWS\\System32\\msvcrt.dll")
+		//!strcmp(IMG_Name(img).c_str(),"C:\\WINDOWS\\System32\\msvcrt.dll")
+		if( !strcmp(IMG_Name(img).c_str(),"C:\\WINDOWS\\SYSTEM32\\ntdll.dll")
 			|| !strcmp(IMG_Name(img).c_str(),"C:\\WINDOWS\\System32\\KERNEL32.DLL")
 			|| !strcmp(IMG_Name(img).c_str(),"C:\\WINDOWS\\System32\\KERNELBASE.dll"))
 		{
@@ -332,8 +331,9 @@ void ImageLoad(IMG img, VOID *v)
 				for(RTN rtn = SEC_RtnHead(sec);RTN_Valid(rtn);rtn = RTN_Next(rtn))
 				{
 					//cout <<"rtn:"<<RTN_Name(rtn) <<endl;
-					//if(!strcmp(RTN_Name(rtn).c_str(),".text") || !strcmp(RTN_Name(rtn).c_str(),"_chkesp")  || !strcmp(RTN_Name(rtn).c_str(),"_adj_fpatan") ||!strcmp(RTN_Name(rtn).c_str(),"RtlAllocateWnfSerializationGroup")||!strcmp(RTN_Name(rtn).c_str(),"ZwMapViewOfSection"))
-						//continue;
+					// || !strcmp(RTN_Name(rtn).c_str(),"_chkesp")  || !strcmp(RTN_Name(rtn).c_str(),"_adj_fpatan") ||!strcmp(RTN_Name(rtn).c_str(),"RtlAllocateWnfSerializationGroup")||!strcmp(RTN_Name(rtn).c_str(),"ZwMapViewOfSection"))
+					if(!strcmp(RTN_Name(rtn).c_str(),".text"))
+						continue;
 					if(Sanity(img,rtn))
 					{
 
