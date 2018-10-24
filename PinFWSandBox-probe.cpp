@@ -246,14 +246,19 @@ VOID INSOpcodeLog(char *opcode)
 //	}
 //}
 
-VOID Sanity(IMG img, RTN rtn)
+bool Sanity(IMG img, RTN rtn)
 {
     if ( PIN_IsProbeMode() &&  !RTN_IsSafeForProbe(rtn) &&! RTN_IsSafeForProbedInsertion( rtn ) )
     {
 		TraceFile << "Cannot insert calls around " << RTN_Name(rtn) <<
             "() in " << IMG_Name(img) << endl;
         //exit(1);
+		return false;
     }
+	else
+		TraceFile << RTN_Name(rtn) <<
+            "in " << IMG_Name(img) <<"can be inserted"<< endl;
+	return true;
 }
 VOID RecordRtnCount(RTN_COUNT * rc){//UINT32 * count
 	rc->_rtnCount++;
@@ -312,7 +317,9 @@ void ImageLoad(IMG img, VOID *v)
 		}*/
 
 		//!strcmp(IMG_Name(img).c_str(),"C:\\WINDOWS\\SYSTEM32\\ntdll.dll") ||
-		if( !strcmp(IMG_Name(img).c_str(),"C:\\WINDOWS\\System32\\KERNEL32.DLL")|| !strcmp(IMG_Name(img).c_str(),"C:\\WINDOWS\\System32\\KERNELBASE.dll"))
+		if( !strcmp(IMG_Name(img).c_str(),"C:\\WINDOWS\\System32\\msvcrt.dll")
+			|| !strcmp(IMG_Name(img).c_str(),"C:\\WINDOWS\\System32\\KERNEL32.DLL")
+			|| !strcmp(IMG_Name(img).c_str(),"C:\\WINDOWS\\System32\\KERNELBASE.dll"))
 		{
 			return;
 		}
@@ -325,23 +332,26 @@ void ImageLoad(IMG img, VOID *v)
 				for(RTN rtn = SEC_RtnHead(sec);RTN_Valid(rtn);rtn = RTN_Next(rtn))
 				{
 					//cout <<"rtn:"<<RTN_Name(rtn) <<endl;
-					if(!strcmp(RTN_Name(rtn).c_str(),".text") || !strcmp(RTN_Name(rtn).c_str(),"_chkesp")  || !strcmp(RTN_Name(rtn).c_str(),"_adj_fpatan") ||!strcmp(RTN_Name(rtn).c_str(),"RtlAllocateWnfSerializationGroup")||!strcmp(RTN_Name(rtn).c_str(),"ZwMapViewOfSection"))
-						continue;
-					Sanity(img,rtn);
+					//if(!strcmp(RTN_Name(rtn).c_str(),".text") || !strcmp(RTN_Name(rtn).c_str(),"_chkesp")  || !strcmp(RTN_Name(rtn).c_str(),"_adj_fpatan") ||!strcmp(RTN_Name(rtn).c_str(),"RtlAllocateWnfSerializationGroup")||!strcmp(RTN_Name(rtn).c_str(),"ZwMapViewOfSection"))
+						//continue;
+					if(Sanity(img,rtn))
+					{
 
-					RTN_COUNT * rc = new RTN_COUNT;
-					rc->_name = PIN_UndecorateSymbolName(RTN_Name(rtn), UNDECORATION_NAME_ONLY);
-					rc->_imgId = IMG_Id(SEC_Img(RTN_Sec(rtn)));
-					rc->_address = RTN_Address(rtn);
-					rc->_rtnCount = 0;
-					rc->_rtn = rtn;
-					rc->_next = RtnList;
-					RtnList = rc;
+						RTN_COUNT * rc = new RTN_COUNT;
+						rc->_name = PIN_UndecorateSymbolName(RTN_Name(rtn), UNDECORATION_NAME_ONLY);
+						rc->_imgId = IMG_Id(SEC_Img(RTN_Sec(rtn)));
+						rc->_address = RTN_Address(rtn);
+						rc->_rtnCount = 0;
+						rc->_rtn = rtn;
+						rc->_next = RtnList;
+						RtnList = rc;
 					
 					
-					//RTN_Open(rtn);
-					RTN_InsertCallProbed(rtn, IPOINT_BEFORE, (AFUNPTR)RecordRtnCount, IARG_PTR, rc, IARG_END);//&(rc->_rtnCount)
-					//RTN_Close(rtn);
+						//RTN_Open(rtn);
+						RTN_InsertCallProbed(rtn, IPOINT_BEFORE, (AFUNPTR)RecordRtnCount, IARG_PTR, rc, IARG_END);//&(rc->_rtnCount)
+						//RTN_Close(rtn);
+					}
+					
 				}
 			}
 		}
