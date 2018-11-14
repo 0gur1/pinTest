@@ -8,7 +8,7 @@ namespace WINDOWS{
 }
 
 //设定最大时间，超时退出程序执行Fini
-#define MAX_LIMIT_SECONDS 30
+#define MAX_LIMIT_SECONDS 60
 
 //记录StartProgram的时间
 long g_time_begin = 0;
@@ -213,8 +213,20 @@ void ImageLoad(IMG img, VOID *v)
 		fprintf(p_outImg, "%4d 0x%08x 0x%08x %s\n", IMG_Id(img), IMG_LowAddress(img), IMG_HighAddress(img), IMG_Name(img).c_str());
 }
 
-VOID RecordRtnCount(UINT32 * count){
-	(*count)++;
+VOID RecordRtnCount(CONTEXT *ctxt,RTN_COUNT *rc){
+	rc->_rtnCount++;
+	//ADDRINT *esp=reinterpret_cast<ADDRINT *>(PIN_GetContextReg(ctxt,REG_STACK_PTR));
+	ADDRINT esp=PIN_GetContextReg(ctxt,REG_STACK_PTR);
+	ADDRINT ebp=PIN_GetContextReg(ctxt,REG_EBP);
+	//cout << rc->_name<<endl;
+	if (!strcmp(rc->_name.c_str(),"read"))
+	{
+		//printf("ESP:%p,%p\n",esp,&esp);
+		cout << "ESP:"<< hex  <<esp << endl;
+		cout << "EBP:"<< hex  << ebp << endl;
+		ADDRINT *addr = (ADDRINT *)esp;
+		cout << hex << *(addr+1) << endl;
+	}
 }
 
 void Routine(RTN rtn, VOID *v){
@@ -229,7 +241,7 @@ void Routine(RTN rtn, VOID *v){
 	RtnList = rc;
 
 	RTN_Open(rtn);
-	RTN_InsertCall(rtn, IPOINT_BEFORE, (AFUNPTR)RecordRtnCount, IARG_PTR, &(rc->_rtnCount), IARG_END);
+	RTN_InsertCall(rtn, IPOINT_BEFORE, (AFUNPTR)RecordRtnCount,IARG_CONST_CONTEXT, IARG_PTR, rc, IARG_END);
 	RTN_Close(rtn);
 }
 int main(int argc, char *argv[])
@@ -303,8 +315,6 @@ int main(int argc, char *argv[])
 		return -1;
 	}
 
-	
-	
 
 	//记录当前时间
 	g_time_begin = time(0);
@@ -312,7 +322,8 @@ int main(int argc, char *argv[])
 	//添加对Trace翻译的功能函数
 	TRACE_AddInstrumentFunction(Trace, 0);
 	IMG_AddInstrumentFunction(ImageLoad, 0);
-	RTN_AddInstrumentFunction(Routine, 0);
+	//RTN_AddInstrumentFunction(Routine, 0);
+	RTN_AddInstrumentFunction(Routine,0);
 
 	PIN_AddFiniFunction(Fini, 0);
     PIN_StartProgram();
