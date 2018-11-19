@@ -4,7 +4,7 @@
 #include <map>
 #include <ctime>
 namespace WINDOWS{
-   #include <windows.h>
+#include <windows.h>
 }
 
 //设定最大时间，超时退出程序执行Fini
@@ -22,6 +22,7 @@ FILE *p_outImg = NULL;
 FILE *p_outBBL = NULL;
 FILE *p_outProcess = NULL;
 FILE *p_outRoutine = NULL;
+FILE *p_outRegister= NULL;
 
 UINT32 indexBBL = 0;
 
@@ -38,17 +39,17 @@ RTN_COUNT * RtnList = NULL;
 map<string, UINT> g_opcode_count;//记录opcode频率
 
 KNOB<string> KnobLogPath(KNOB_MODE_WRITEONCE,  "pintool",
-    "lp", "", "log path");
+						 "lp", "", "log path");
 
 //PIN默认函数写法
 INT32 Usage()
 {
-    cerr << "This tool prints out the number of dynamically executed " << endl <<
-            "instructions, basic blocks and threads in the application." << endl << endl;
+	cerr << "This tool prints out the number of dynamically executed " << endl <<
+		"instructions, basic blocks and threads in the application." << endl << endl;
 
-    cerr << KNOB_BASE::StringKnobSummary() << endl;
+	cerr << KNOB_BASE::StringKnobSummary() << endl;
 
-    return -1;
+	return -1;
 }
 
 //PIN默认函数写法，Fini用于在程序退出时进行处理
@@ -93,6 +94,10 @@ VOID Fini(INT32 code, VOID *v)
 		}
 		fclose(p_outRoutine);
 		p_outRoutine = NULL;
+	}
+	if(p_outRegister != NULL){
+		fclose(p_outRegister);
+		p_outRegister = NULL;
 	}
 }
 
@@ -213,22 +218,26 @@ void ImageLoad(IMG img, VOID *v)
 		fprintf(p_outImg, "%4d 0x%08x 0x%08x %s\n", IMG_Id(img), IMG_LowAddress(img), IMG_HighAddress(img), IMG_Name(img).c_str());
 }
 
-VOID RecordRtnCount(CONTEXT *ctxt,RTN_COUNT *rc){
+VOID RecordRtnCount(RTN_COUNT *rc){
 	rc->_rtnCount++;
-	//ADDRINT *esp=reinterpret_cast<ADDRINT *>(PIN_GetContextReg(ctxt,REG_STACK_PTR));
+}
+VOID RecordRtnRegister(CONTEXT *ctxt,RTN_COUNT *rc){
 	ADDRINT esp=PIN_GetContextReg(ctxt,REG_STACK_PTR);
 	ADDRINT ebp=PIN_GetContextReg(ctxt,REG_EBP);
-	//cout << rc->_name<<endl;
-	if (!strcmp(rc->_name.c_str(),"read"))
-	{
-		//printf("ESP:%p,%p\n",esp,&esp);
-		cout << "ESP:"<< hex  <<esp << endl;
-		cout << "EBP:"<< hex  << ebp << endl;
-		ADDRINT *addr = (ADDRINT *)esp;
-		cout << hex << *(addr+1) << endl;
-	}
-}
+	ADDRINT eip=PIN_GetContextReg(ctxt,REG_INST_PTR);
+	ADDRINT eax=PIN_GetContextReg(ctxt,REG_EAX);
 
+	ADDRINT *addr ;
+	fprintf(p_outRegister, "%s:\nESP:%p\nEBP:%p\nEIP:%p\nEAX:%p\n", rc->_name.c_str(),esp,ebp,eip,eax); /**/
+	fprintf(p_outRegister, "stack:\n");
+	
+	//数量多，
+	for(addr =(ADDRINT *)esp;addr <= (ADDRINT *)ebp;addr++)
+	{
+	    fprintf(p_outRegister,"%p:%p\n",addr,*addr);
+	}
+	fprintf(p_outRegister,"\n");
+} 
 void Routine(RTN rtn, VOID *v){
 	RTN_COUNT * rc = new RTN_COUNT;
 	//rc->_name = RTN_Name(rtn);
@@ -241,19 +250,20 @@ void Routine(RTN rtn, VOID *v){
 	RtnList = rc;
 
 	RTN_Open(rtn);
-	RTN_InsertCall(rtn, IPOINT_BEFORE, (AFUNPTR)RecordRtnCount,IARG_CONST_CONTEXT, IARG_PTR, rc, IARG_END);
+	RTN_InsertCall(rtn, IPOINT_BEFORE, (AFUNPTR)RecordRtnCount,IARG_PTR, rc, IARG_END);
+	RTN_InsertCall(rtn, IPOINT_AFTER, (AFUNPTR)RecordRtnRegister,IARG_CONST_CONTEXT, IARG_PTR, rc, IARG_END);
 	RTN_Close(rtn);
 }
 int main(int argc, char *argv[])
 {
-	
+
 	//日志目录和系统调用函数信息目录
 	//string runtime_dir = "F:\\PinFWSandBox\\PIN_Runtime_File\\PIN_Runtime_File\\";
 	cout << "[+]start" << endl;
-    if( PIN_Init(argc,argv) )
-    {
-        return Usage();
-    }
+	if( PIN_Init(argc,argv) )
+	{
+		return Usage();
+	}
 	PIN_InitSymbols();
 	string work_dir = argv[argc-1];
 	int index = work_dir.rfind("\\");
@@ -299,6 +309,7 @@ int main(int argc, char *argv[])
 	string bbl_file = log_dir + name + "_bbl_list.fw";
 	string process_file = log_dir + name + "_process.fw";
 	string routine_file = log_dir + name + "_routine.fw";
+	string reg_file = log_dir + name + "_registers.fw";
 
 	p_ins_imm_file = fopen(ins_imm_file.c_str(), "w");
 	p_ins_opcode_file = fopen(ins_opcode_file.c_str(), "w");
@@ -308,8 +319,8 @@ int main(int argc, char *argv[])
 	p_outBBL = fopen(bbl_file.c_str(), "w");
 	p_outProcess = fopen(process_file.c_str(), "w");
 	p_outRoutine = fopen(routine_file.c_str(), "w");
-
-	if ( p_ins_imm_file == NULL || p_ins_opcode_file == NULL || p_outBBL == NULL || p_outImg == NULL || p_outProcess == NULL || p_outRoutine == NULL)
+	p_outRegister = fopen(reg_file.c_str(),"w");
+	if ( p_ins_imm_file == NULL || p_ins_opcode_file == NULL || p_outBBL == NULL || p_outImg == NULL || p_outProcess == NULL || p_outRoutine == NULL||p_outRegister == NULL)
 	{
 		cout << "Ins log file not open!" << endl;
 		return -1;
@@ -322,12 +333,12 @@ int main(int argc, char *argv[])
 	//添加对Trace翻译的功能函数
 	TRACE_AddInstrumentFunction(Trace, 0);
 	IMG_AddInstrumentFunction(ImageLoad, 0);
-	//RTN_AddInstrumentFunction(Routine, 0);
-	RTN_AddInstrumentFunction(Routine,0);
+	RTN_AddInstrumentFunction(Routine, 0);
+
 
 	PIN_AddFiniFunction(Fini, 0);
-    PIN_StartProgram();
+	PIN_StartProgram();
 
-    return 0;
+	return 0;
 }
 
