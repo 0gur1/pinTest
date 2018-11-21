@@ -33,6 +33,9 @@ typedef struct RtnCount{
 	RTN _rtn;
 	UINT32 _rtnCount;
 	struct RtnCount * _next;
+	ADDRINT _in_ebp;
+	UINT32 _size;
+	//ADDRINT _out_esp;
 } RTN_COUNT;
 RTN_COUNT * RtnList = NULL;
 
@@ -86,10 +89,12 @@ VOID Fini(INT32 code, VOID *v)
 		p_outImg = NULL;
 	}
 	if(p_outRoutine != NULL){
-		fprintf(p_outRoutine, "%s %8s %8s %8s\n", "RoutineName", "Image", "Address", "Calls");
+		fprintf(p_outRoutine, "%s %8s %8s %8s %8s\n", "RoutineName", "Image", "Address", "Calls","Size");
 		for(RTN_COUNT *rc = RtnList; rc; rc = rc->_next){
 			if(rc->_rtnCount > 0){
-				fprintf(p_outRoutine, "%s %d %08x %d\n", rc->_name.c_str(), rc->_imgId, rc->_address, rc->_rtnCount);
+				fprintf(p_outRoutine, "%s %d %08x %d %d\n", rc->_name.c_str(), rc->_imgId, rc->_address, rc->_rtnCount,rc->_size);
+				if(!strcmp(rc->_name.c_str(),"KiUserExceptionDispatcher"))
+					cout <<"crash!" << endl;
 			}
 		}
 		fclose(p_outRoutine);
@@ -218,39 +223,62 @@ void ImageLoad(IMG img, VOID *v)
 		fprintf(p_outImg, "%4d 0x%08x 0x%08x %s\n", IMG_Id(img), IMG_LowAddress(img), IMG_HighAddress(img), IMG_Name(img).c_str());
 }
 
-VOID RecordRtnCount(RTN_COUNT *rc){
+VOID RecordRtnCount(CONTEXT *ctxt,RTN_COUNT *rc){
 	rc->_rtnCount++;
+	rc->_in_ebp =PIN_GetContextReg(ctxt,REG_EBP);
+	
 }
 VOID RecordRtnRegister(CONTEXT *ctxt,RTN_COUNT *rc){
-	ADDRINT esp=PIN_GetContextReg(ctxt,REG_STACK_PTR);
-	ADDRINT ebp=PIN_GetContextReg(ctxt,REG_EBP);
-	ADDRINT eip=PIN_GetContextReg(ctxt,REG_INST_PTR);
-	ADDRINT eax=PIN_GetContextReg(ctxt,REG_EAX);
-
-	ADDRINT *addr ;
-	fprintf(p_outRegister, "%s:\nESP:%p\nEBP:%p\nEIP:%p\nEAX:%p\n", rc->_name.c_str(),esp,ebp,eip,eax); /**/
-	fprintf(p_outRegister, "stack:\n");
 	
-	//ÊýÁ¿¶à£¬
-	for(addr =(ADDRINT *)esp;addr <= (ADDRINT *)ebp;addr++)
+	ADDRINT ebp=PIN_GetContextReg(ctxt,REG_EBP);
+	if (ebp!=rc->_in_ebp && rc->_in_ebp!=0)
 	{
-	    fprintf(p_outRegister,"%p:%p\n",addr,*addr);
+
+		//stack is changed
+		ADDRINT esp=PIN_GetContextReg(ctxt,REG_STACK_PTR);
+		ADDRINT eip=PIN_GetContextReg(ctxt,REG_INST_PTR);
+		ADDRINT eax=PIN_GetContextReg(ctxt,REG_EAX);
+
+		ADDRINT *addr ;
+		
+		fprintf(p_outRegister, "%d %p %d %s:\nin_EBP:%p\nout_EBP:%p\nESP:%p\nEIP:%p\nEAX:%p\n", rc->_imgId,rc->_address,rc->_rtnCount,rc->_name.c_str(),rc->_in_ebp,ebp,esp,eip,eax); /**/
+		fprintf(p_outRegister, "stack:\n");
+	
+		if(ebp - esp >0x100)
+		{
+			if(rc->_in_ebp < ebp)
+				for(addr =(ADDRINT *)esp;addr <= (ADDRINT *)rc->_in_ebp;addr++)
+				{
+					fprintf(p_outRegister,"%p:%p\n",addr,*addr);
+				}
+			else
+				for(addr =(ADDRINT *)esp;addr <= (ADDRINT *)(esp+10);addr++)
+				{
+					fprintf(p_outRegister,"%p:%p\n",addr,*addr);
+				}
+		}
+		else
+			for(addr =(ADDRINT *)esp;addr <= (ADDRINT *)ebp;addr++)
+			{
+				fprintf(p_outRegister,"%p:%p\n",addr,*addr);
+			}
+		
+		fprintf(p_outRegister,"\n");
 	}
-	fprintf(p_outRegister,"\n");
 } 
 void Routine(RTN rtn, VOID *v){
 	RTN_COUNT * rc = new RTN_COUNT;
-	//rc->_name = RTN_Name(rtn);
 	rc->_name = PIN_UndecorateSymbolName(RTN_Name(rtn), UNDECORATION_NAME_ONLY);
 	rc->_imgId = IMG_Id(SEC_Img(RTN_Sec(rtn)));
 	rc->_address = RTN_Address(rtn);
 	rc->_rtnCount = 0;
 	rc->_rtn = rtn;
+	rc->_size = RTN_Size(rtn);
 	rc->_next = RtnList;
 	RtnList = rc;
 
 	RTN_Open(rtn);
-	RTN_InsertCall(rtn, IPOINT_BEFORE, (AFUNPTR)RecordRtnCount,IARG_PTR, rc, IARG_END);
+	RTN_InsertCall(rtn, IPOINT_BEFORE, (AFUNPTR)RecordRtnCount,IARG_CONST_CONTEXT,IARG_PTR, rc, IARG_END);
 	RTN_InsertCall(rtn, IPOINT_AFTER, (AFUNPTR)RecordRtnRegister,IARG_CONST_CONTEXT, IARG_PTR, rc, IARG_END);
 	RTN_Close(rtn);
 }
